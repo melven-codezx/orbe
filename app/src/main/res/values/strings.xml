@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Orbe</string>
+    <string name="tagline">Central de comando</string>
+    <string name="desktop_mode">Modo desktop</string>
+    <string name="desktop_mode_desc">Layout de computador, como no Chrome</string>
+    <string name="clear_cache">Limpar cache</string>
+    <string name="clearing">Limpando…</string>
+    <string name="cache_cleared">Cache limpo</string>
+    <string name="cache_cleared_toast">Cache, cookies e histórico limpos</string>
+    <string name="back_to_google">Voltar ao Google</string>
+    <string name="reload">Recarregar página</string>
+    <string name="close">Fechar</string>
+    <string name="open_panel">Abrir central de comando</string>
+    <string name="desktop_on_toast">Modo desktop ativado</string>
+    <string name="desktop_off_toast">Modo mobile ativado</string>
+    <string name="offline">Sem conexão. Verifique a sua internet.</string>
+</resources>

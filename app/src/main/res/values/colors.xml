@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="orbe_surface">#F6F7FC</color>
+    <color name="orbe_card">#FFFFFF</color>
+    <color name="orbe_ink">#0C1024</color>
+    <color name="orbe_ink_soft">#5B6178</color>
+    <color name="orbe_primary">#5B4BEE</color>
+    <color name="orbe_primary_deep">#3A22C9</color>
+    <color name="orbe_violet">#8B5CF6</color>
+    <color name="orbe_cyan">#22D3EE</color>
+    <color name="orbe_scrim">#8C0A0E1F</color>
+    <color name="orbe_track_off">#DCE0EE</color>
+    <color name="orbe_ghost">#F0F1F8</color>
+    <color name="orbe_ok">#12B981</color>
+</resources>
