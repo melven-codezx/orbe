@@ -15,4 +15,5 @@
     <string name="desktop_on_toast">Modo desktop ativado</string>
     <string name="desktop_off_toast">Modo mobile ativado</string>
     <string name="offline">Sem conexão. Verifique a sua internet.</string>
+    <string name="device_status">Estado do telemóvel</string>
 </resources>

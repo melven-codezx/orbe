@@ -9,8 +9,11 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.app.ActivityManager;
+import android.os.StatFs;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
@@ -33,6 +36,7 @@ import com.orbe.browser.ui.OrbeFab;
 import com.orbe.browser.ui.OrbeSwitch;
 
 import java.io.File;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -66,7 +70,7 @@ public class MainActivity extends Activity {
     private OrbeSwitch switchDesktop;
     private OrbeAction btnClear, btnHome;
     private ImageView btnClose, btnReload;
-    private TextView title, subtitle, lblDesktop, lblDesktopDesc;
+    private TextView title, subtitle, lblDesktop, lblDesktopDesc, lblStatusTitle, lblStatusDesc;
 
     private SharedPreferences prefs;
     private boolean desktopMode;
@@ -116,6 +120,8 @@ public class MainActivity extends Activity {
         subtitle = findViewById(R.id.subtitle);
         lblDesktop = findViewById(R.id.lblDesktop);
         lblDesktopDesc = findViewById(R.id.lblDesktopDesc);
+        lblStatusTitle = findViewById(R.id.lblStatusTitle);
+        lblStatusDesc = findViewById(R.id.lblStatusDesc);
     }
 
     private void styleTypography() {
@@ -123,6 +129,8 @@ public class MainActivity extends Activity {
         subtitle.setTypeface(Ui.font(this, true));
         lblDesktop.setTypeface(Ui.font(this, true));
         lblDesktopDesc.setTypeface(Ui.font(this, false));
+        lblStatusTitle.setTypeface(Ui.font(this, true));
+        lblStatusDesc.setTypeface(Ui.font(this, false));
 
         btnClear.setup(getString(R.string.clear_cache), R.drawable.ic_broom, OrbeAction.STYLE_PRIMARY);
         btnHome.setup(getString(R.string.back_to_google), R.drawable.ic_home, OrbeAction.STYLE_GHOST);
@@ -210,7 +218,7 @@ public class MainActivity extends Activity {
     /** Links especiais (tel:, mailto:, whatsapp:, intent:) vão para o app certo. */
     private boolean handleUrl(Uri uri) {
         if (uri == null) return false;
-        String scheme = uri.getScheme() == null ? "http" : uri.getScheme().toLowerCase();
+        String scheme = uri.getScheme() == null ? "http" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (scheme.equals("http") || scheme.equals("https")) {
             return false;
         }
@@ -337,6 +345,7 @@ public class MainActivity extends Activity {
         }
         panelOpen = true;
         switchDesktop.setChecked(desktopMode, false, false);
+        refreshDeviceStatus();
         panel.setVisibility(View.VISIBLE);
         scrim.setVisibility(View.VISIBLE);
 
@@ -376,32 +385,42 @@ public class MainActivity extends Activity {
         btnClear.setBusy(true);
         btnClear.setLabelText(getString(R.string.clearing));
 
+        final long start = android.os.SystemClock.elapsedRealtime();
+
+        // operações rápidas do WebView (thread principal)
         try {
             webView.clearCache(true);
             webView.clearHistory();
             webView.clearFormData();
+            webView.clearSslPreferences();
             CookieManager.getInstance().removeAllCookies(null);
             CookieManager.getInstance().flush();
             WebStorage.getInstance().deleteAllData();
             WebViewDatabase.getInstance(this).clearHttpAuthUsernamePassword();
-            deleteTree(getCacheDir());
-            deleteTree(getExternalCacheDir());
-            if (android.os.Build.VERSION.SDK_INT >= 21) {
-                deleteTree(getCodeCacheDir());
-            }
-            webView.clearSslPreferences();
         } catch (Exception ignored) {
         }
 
-        handler.postDelayed(() -> {
-            btnClear.setDone();
-            btnClear.setLabelText(getString(R.string.cache_cleared));
-            toast(getString(R.string.cache_cleared_toast));
+        // I/O de disco em thread de fundo — evita ANR em telemóveis lentos
+        new Thread(() -> {
+            try {
+                deleteTree(getCacheDir());
+                deleteTree(getExternalCacheDir());
+                deleteTree(getCodeCacheDir());
+            } catch (Exception ignored) {
+            }
+            long elapsed = android.os.SystemClock.elapsedRealtime() - start;
+            long wait = Math.max(0, 950 - elapsed);
             handler.postDelayed(() -> {
-                btnClear.reset(getString(R.string.clear_cache));
-                webView.reload();
-            }, 1400);
-        }, 950);
+                btnClear.setDone();
+                btnClear.setLabelText(getString(R.string.cache_cleared));
+                toast(getString(R.string.cache_cleared_toast));
+                refreshDeviceStatus();
+                handler.postDelayed(() -> {
+                    btnClear.reset(getString(R.string.clear_cache));
+                    webView.reload();
+                }, 1400);
+            }, wait);
+        }, "orbe-cleaner").start();
     }
 
     private void deleteTree(File file) {
@@ -412,6 +431,49 @@ public class MainActivity extends Activity {
         }
         //noinspection ResultOfMethodCallIgnored
         file.delete();
+    }
+
+    // -------------------------------------------------- estado do telemóvel
+
+    /** Mostra RAM livre e espaço em disco — ajuda a diagnosticar travamentos. */
+    private void refreshDeviceStatus() {
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(mi);
+
+            StatFs stat = new StatFs(Environment.getDataDirectory().getPath());
+            long diskFree = stat.getAvailableBytes();
+            long ramFree = mi.availMem;
+            long ramTotal = mi.totalMem;
+
+            long mb = 1024L * 1024L;
+            boolean critical = mi.lowMemory || ramFree < 260 * mb || diskFree < 2L * 1024 * mb;
+            boolean warn = ramFree < 520 * mb || diskFree < 6L * 1024 * mb;
+
+            int color = critical ? 0xFFEF4444 : warn ? 0xFFF59E0B : 0xFF12B981;
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("RAM livre ").append(human(ramFree))
+                    .append(" de ").append(human(ramTotal))
+                    .append(" · Disco livre ").append(human(diskFree));
+            if (critical) {
+                sb.append("\n⚠ Muita pressão de memória — reinicie o telemóvel");
+            } else if (warn) {
+                sb.append("\nPouco livre — limpe ficheiros ou desinstale apps");
+            }
+            lblStatusDesc.setText(sb.toString());
+            lblStatusDesc.setTextColor(color);
+        } catch (Exception e) {
+            lblStatusDesc.setText("—");
+        }
+    }
+
+    private String human(long bytes) {
+        if (bytes >= 1024L * 1024L * 1024L) {
+            return String.format(Locale.ROOT, "%.1f GB", bytes / (double) (1024L * 1024L * 1024L));
+        }
+        return String.format(Locale.ROOT, "%d MB", bytes / (1024L * 1024L));
     }
 
     // ---------------------------------------------------------------------- FAB
@@ -494,5 +556,18 @@ public class MainActivity extends Activity {
             webView.destroy();
         }
         super.onDestroy();
+    }
+
+    /** Em pressão de memória, liberta o que o WebView conseguir. */
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_RUNNING_LOW && webView != null) {
+            try {
+                webView.freeMemory();
+            } catch (Throwable ignored) {
+            }
+        }
     }
 }
